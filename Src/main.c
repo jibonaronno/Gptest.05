@@ -312,7 +312,7 @@ int main(void)
 	
 	//(encrypt[1] != 0x05A)
 	
-	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05DB) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
+	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D5) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
 	{
 		while(1)
 		{

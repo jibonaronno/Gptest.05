@@ -165,6 +165,8 @@ char uid[20];
 
 char str_ip[22];
 
+uint32_t gidx01 = 0;
+
 /* USER CODE END 0 */
 
 /**
@@ -243,7 +245,7 @@ int main(void)
 	GATEWAY_ADDRESS[2] = ip_addr3;
 	GATEWAY_ADDRESS[3] = (ip_addr4 - 2);
 	
-	readSector(0x8012000, (void *)flash, 20);
+	readSector(0x8012000, (void *)flash, 28);
 	flash[19] = 0;
 	
 	strcat(str_ip, (char *)&flash[4]);
@@ -275,10 +277,19 @@ int main(void)
 		GATEWAY_ADDRESS[1] = ip_addr2;
 		GATEWAY_ADDRESS[2] = ip_addr3;
 		GATEWAY_ADDRESS[3] = (ip_addr4 - 2);
+		
+		for(gidx01=0;gidx01<8;gidx01++)
+		{
+			Mrelays[gidx01] = flash[20+gidx01];
+		}
 	}
 	else
 	{
 		sprintf(str_ip, "%d,%d,%d,%d", IP_ADDRESS[0], IP_ADDRESS[1], IP_ADDRESS[2], IP_ADDRESS[3]);
+		for(gidx01=0;gidx01<8;gidx01++)
+		{
+			flash[20+gidx01] = 0; //Mrelays[gidx01];
+		}
 	}
 	
 	HAL_Delay(200);
@@ -390,6 +401,52 @@ int main(void)
 			ds18b20_send_rom_cmd(SKIP_ROM_CMD_BYTE);
 			ds18b20_send_function_cmd(READ_SCRATCHPAD_CMD);
 			temp = ds18b20_read_temp();	// returns float value
+			
+			if(Mrelays[0] == 1)
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_RESET);
+			}
+			
+			if(Mrelays[1] == 1)
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+			}
+			
+			if(Mrelays[2] == 1)
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);
+			}
+			
+			if(Mrelays[3] == 1)
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_RESET);
+			}
+			
+			if(Mrelays[4] == 1)
+			{
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
+			}
+			
 		}
 
   }
@@ -493,10 +550,14 @@ const char* LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *
 				{
 					//Mrelays[4] = 1;
 					//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
+					memcpy(flash, pcValue[i], 20); //++
+					memcpy(&flash[20], Mrelays, 8); //++
+					
 					eraseSector(0x8012000);
 					HAL_Delay(200);
 					HAL_Delay(200);
-					writeSector(0x8012000, pcValue[i], 21);
+					//writeSector(0x8012000, pcValue[i], 21); //--
+					writeSector(0x8012000, flash, 28); //++
 					HAL_Delay(200);
 					HAL_Delay(200);
 					while(1){;}
@@ -511,6 +572,18 @@ const char* LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *
 	}
 	
 	SwitchStates = ((Mrelays[0] * 1) + (Mrelays[1] * 2) + (Mrelays[2] * 4) + (Mrelays[3] * 8) + (Mrelays[4] * 16));
+	
+	/****************************************************************************************************************/
+	//memcpy(flash, pcValue[i], 20); //++
+	memcpy(&flash[20], Mrelays, 8); //++
+	
+	eraseSector(0x8012000);
+	HAL_Delay(100);
+	//writeSector(0x8012000, pcValue[i], 21); //--
+	writeSector(0x8012000, flash, 28); //++
+	HAL_Delay(100);
+	
+	/****************************************************************************************************************/
 	
 	//sprintf((char *)idx_html, "HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n%s:0,11,%2d,%02d,%03d", str_ip, SwitchStates, temp, volt); //, uid); //, strCmd01);
 	sprintf((char *)idx_html, "%s:0,11,%d,%d,%d", str_ip, SwitchStates, temp, volt);

@@ -141,9 +141,9 @@ uint16_t volt = 0;
 
 
 uint8_t ip_addr1 = 10;
-uint8_t ip_addr2 = 222;
-uint8_t ip_addr3 = 202;
-uint8_t ip_addr4 = 59;
+uint8_t ip_addr2 = 5;
+uint8_t ip_addr3 = 40;
+uint8_t ip_addr4 = 83;
 
 
 /*
@@ -312,7 +312,7 @@ int main(void)
 	
 	//(encrypt[1] != 0x05A)
 	
-	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D5) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
+	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05DB) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
 	{
 		while(1)
 		{

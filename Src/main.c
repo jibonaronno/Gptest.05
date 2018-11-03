@@ -139,12 +139,10 @@ extern uint8_t GATEWAY_ADDRESS[4];
 
 uint16_t volt = 0;
 
-
 uint8_t ip_addr1 = 10;
 uint8_t ip_addr2 = 5;
 uint8_t ip_addr3 = 40;
 uint8_t ip_addr4 = 83;
-
 
 /*
 uint8_t ip_addr1 = 192;

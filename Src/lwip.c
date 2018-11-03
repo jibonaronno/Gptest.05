@@ -94,10 +94,12 @@ void MX_LWIP_Init(void)
   NETMASK_ADDRESS[2] = 255;
   NETMASK_ADDRESS[3] = 248;
 	
-//  GATEWAY_ADDRESS[0] = 10;
-//  GATEWAY_ADDRESS[1] = 222;
-//  GATEWAY_ADDRESS[2] = 202;
-//  GATEWAY_ADDRESS[3] = 57;
+	/*
+  GATEWAY_ADDRESS[0] = 10;
+  GATEWAY_ADDRESS[1] = 5;
+  GATEWAY_ADDRESS[2] = 40;
+  GATEWAY_ADDRESS[3] = 83;
+	*/
   
   /* Initilialize the LwIP stack without RTOS */
   lwip_init();

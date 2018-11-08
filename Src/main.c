@@ -310,7 +310,8 @@ int main(void)
 	
 	//(encrypt[1] != 0x05A)
 	
-	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05DA) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
+	
+	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D9) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
 	{
 		while(1)
 		{
@@ -321,7 +322,7 @@ int main(void)
 	
 	
 	
-	sprintf(uid, "%X %X %X %X", encrypt[0], encrypt[1], encrypt[2], encrypt[3]);
+	sprintf(uid, "%X-%X-%X-%X-%X-%X", encrypt[0], encrypt[1], encrypt[2], encrypt[3], encrypt[4], encrypt[5]);
 	
 
   /* USER CODE END 2 */
@@ -501,7 +502,7 @@ const char* LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *
 				}
 				else if(strstr(pcValue[i], "uid"))
 				{
-					sprintf(uid, "%X %X %X %X", encrypt[0], encrypt[1], encrypt[2], encrypt[3]);
+					sprintf(uid, "%X-%X-%X-%X-%X-%X", encrypt[0], encrypt[1], encrypt[2], encrypt[3], encrypt[4], encrypt[5]);
 				}
 				
 				sprintf(strCmd01, "%s %s", pcParam[i], pcValue[i]);

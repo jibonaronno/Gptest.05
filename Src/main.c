@@ -285,7 +285,8 @@ int main(void)
 		
 		for(gidx01=0;gidx01<8;gidx01++)
 		{
-			flash[20+gidx01] = 0; //Mrelays[gidx01];
+			//flash[20+gidx01] = 0; //Mrelays[gidx01];
+			Mrelays[gidx01] = flash[20+gidx01];
 		}
 	}
 	else
@@ -294,8 +295,20 @@ int main(void)
 		
 		for(gidx01=0;gidx01<8;gidx01++)
 		{
+			flash[20+gidx01] = 0; //Mrelays[gidx01];
+		}
+		
+		for(gidx01=0;gidx01<8;gidx01++)
+		{
 			Mrelays[gidx01] = flash[20+gidx01];
 		}
+		
+		strncpy((char *)flash, "dip:010.005.040.083", 19);
+		
+		eraseSector(0x8012000);
+		HAL_Delay(100);
+		writeSector(0x8012000, flash, 30); //++
+		HAL_Delay(200);
 
 	}
 	

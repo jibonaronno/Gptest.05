@@ -116,6 +116,9 @@ uint32_t systick_counter02 = 0;
 GPIO_PinState flag_systick03 = GPIO_PIN_RESET;
 uint32_t systick_counter03 = 0;
 
+GPIO_PinState PB6_State = GPIO_PIN_RESET;
+uint32_t PB6_high_count = 0;
+
 tCGI CGI_Handlers[] = {
 	{"/", LEDS_CGI_Handler}, /* LEDS_CGI_Handler will be called when user connects to "/ledaction.cgi" URL */
 };
@@ -380,6 +383,30 @@ int main(void)
 				volt = (uint16_t)((adc4_avg * 100) / 429);
 				adc4_acc = 0;
 			}
+			
+			PB6_State = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_6);
+			
+			if(PB6_State == GPIO_PIN_RESET)
+			{
+				if(PB6_high_count < 2000)
+				{
+					PB6_high_count++;
+				}
+				else
+				{
+					eraseSector(0x8012000);
+					HAL_Delay(100);
+					while(1)
+					{
+						HAL_Delay(200);
+					}
+				}
+			}
+			else
+			{
+				PB6_high_count = 0;
+			}
+			
 		}
 		
 		if(flag_systick01)
@@ -762,6 +789,12 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+	
+	GPIO_InitStruct.Pin = GPIO_PIN_6;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 	

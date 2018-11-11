@@ -161,9 +161,11 @@ uint8_t ip_addr4 = 22;
 
 char *ptr;
 
-char uid[20];
+char uid[50];
 
 char str_ip[22];
+
+char str_Mrelays[22];
 
 uint32_t gidx01 = 0;
 
@@ -245,7 +247,7 @@ int main(void)
 	GATEWAY_ADDRESS[2] = ip_addr3;
 	GATEWAY_ADDRESS[3] = (ip_addr4 - 2);
 	
-	readSector(0x8012000, (void *)flash, 28);
+	readSector(0x8012000, (void *)flash, 30);
 	flash[19] = 0;
 	
 	strcat(str_ip, (char *)&flash[4]);
@@ -280,17 +282,23 @@ int main(void)
 		
 		for(gidx01=0;gidx01<8;gidx01++)
 		{
-			Mrelays[gidx01] = flash[20+gidx01];
+			flash[20+gidx01] = 0; //Mrelays[gidx01];
 		}
 	}
 	else
 	{
 		sprintf(str_ip, "%d,%d,%d,%d", IP_ADDRESS[0], IP_ADDRESS[1], IP_ADDRESS[2], IP_ADDRESS[3]);
+		
 		for(gidx01=0;gidx01<8;gidx01++)
 		{
-			flash[20+gidx01] = 0; //Mrelays[gidx01];
+			Mrelays[gidx01] = flash[20+gidx01];
 		}
+
 	}
+	
+	sprintf(str_Mrelays, "%d-%d-%d-%d-%d-%d-%d-%d", Mrelays[0], Mrelays[1], Mrelays[2], Mrelays[3], Mrelays[4], Mrelays[5], Mrelays[6], Mrelays[7]);
+	
+	SwitchStates = ((Mrelays[0] * 1) + (Mrelays[1] * 2) + (Mrelays[2] * 4) + (Mrelays[3] * 8) + (Mrelays[4] * 16) + (Mrelays[5] * 32));
 	
 	HAL_Delay(200);
 	HAL_Delay(200);
@@ -323,7 +331,7 @@ int main(void)
 	
 	//(encrypt[1] != 0x05A)
 	
-	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D5) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938))
+	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D3) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938) || (encrypt[4] != 0x5857) || (encrypt[5] != 0x4323))
 	{
 		while(1)
 		{
@@ -447,6 +455,15 @@ int main(void)
 				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
 			}
 			
+			if(Mrelays[5] == 1)
+			{
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
+			}
+			else
+			{
+				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
+			}
+			
 		}
 
   }
@@ -546,18 +563,38 @@ const char* LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *
 					Mrelays[4] = 1;
 					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
 				}
+				else if(strstr(pcValue[i], "f0"))
+				{
+					Mrelays[5] = 0;
+					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
+				}
+				else if(strstr(pcValue[i], "f1"))
+				{
+					Mrelays[5] = 1;
+					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
+				}				
 				else if(strstr(pcValue[i], "dip"))
 				{
 					//Mrelays[4] = 1;
 					//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-					memcpy(flash, pcValue[i], 20); //++
-					memcpy(&flash[20], Mrelays, 8); //++
+					//memcpy(flash, pcValue[i], 20); //++
+					//memcpy(&flash[20], Mrelays, 8); //++
+					
+					for(gidx01 = 0; gidx01 < 20; gidx01++)
+					{
+						flash[gidx01] = pcValue[i][gidx01];
+					}
+					
+					for(gidx01 = 0; gidx01 < 8; gidx01++)
+					{
+						flash[20 + gidx01] = Mrelays[gidx01];
+					}
 					
 					eraseSector(0x8012000);
 					HAL_Delay(200);
 					HAL_Delay(200);
 					//writeSector(0x8012000, pcValue[i], 21); //--
-					writeSector(0x8012000, flash, 28); //++
+					writeSector(0x8012000, flash, 30); //++
 					HAL_Delay(200);
 					HAL_Delay(200);
 					while(1){;}
@@ -571,17 +608,22 @@ const char* LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *
 			}
 	}
 	
-	SwitchStates = ((Mrelays[0] * 1) + (Mrelays[1] * 2) + (Mrelays[2] * 4) + (Mrelays[3] * 8) + (Mrelays[4] * 16));
+	SwitchStates = ((Mrelays[0] * 1) + (Mrelays[1] * 2) + (Mrelays[2] * 4) + (Mrelays[3] * 8) + (Mrelays[4] * 16) + (Mrelays[5] * 32));
 	
 	/****************************************************************************************************************/
 	//memcpy(flash, pcValue[i], 20); //++
-	memcpy(&flash[20], Mrelays, 8); //++
+	//memcpy(&flash[20], Mrelays, 8); //++
+	
+	for(gidx01 = 0; gidx01 < 8; gidx01++)
+	{
+		flash[20+gidx01] = Mrelays[gidx01];
+	}
 	
 	eraseSector(0x8012000);
 	HAL_Delay(100);
 	//writeSector(0x8012000, pcValue[i], 21); //--
-	writeSector(0x8012000, flash, 28); //++
-	HAL_Delay(100);
+	writeSector(0x8012000, flash, 30); //++
+	HAL_Delay(200);
 	
 	/****************************************************************************************************************/
 	
@@ -723,7 +765,7 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 	
-	GPIO_InitStruct.Pin = GPIO_PIN_8;
+	GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_6;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

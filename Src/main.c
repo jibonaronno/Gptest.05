@@ -49,16 +49,10 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f1xx_hal.h"
-#include "lwip.h"
-#include "lwip/apps/httpd.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#include "fsdata_custom.h"
-#include "ds18b20_mflib.h"
-#include "tm_onewire.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -85,7 +79,7 @@ uint16_t *encrypt = (uint16_t *)0x1FFFF7E8;
 /* USER CODE BEGIN 0 */
 
 ADC_HandleTypeDef hadc1;
-
+UART_HandleTypeDef huart1;
 IWDG_HandleTypeDef   IwdgHandle;
 
 static void MX_ADC1_Init(void);
@@ -102,11 +96,6 @@ char strCmd01[40];
 
 uint8_t flash[2048];
 
-extern char idx_html[];
-extern struct fsdata_file file__index_html[];
-
-const char * LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]);
-
 GPIO_PinState flag_systick01 = GPIO_PIN_RESET;
 uint32_t systick_counter01 = 0;
 
@@ -119,15 +108,6 @@ uint32_t systick_counter03 = 0;
 GPIO_PinState PB6_State = GPIO_PIN_RESET;
 uint32_t PB6_high_count = 0;
 
-tCGI CGI_Handlers[] = {
-	{"/", LEDS_CGI_Handler}, /* LEDS_CGI_Handler will be called when user connects to "/ledaction.cgi" URL */
-};
-
-void SetCGIHandlers(const tCGI *cgis, uint16_t number_of_handlers)
-{
-	http_set_cgi_handlers((tCGI *)cgis, number_of_handlers);
-}
-
 //--------------------------------------------------
 /*
 __STATIC_INLINE void DelayMicro(__IO uint32_t micros)
@@ -137,16 +117,12 @@ while (micros--) ;
 } */
 //--------------------------------------------------
 
-extern uint8_t IP_ADDRESS[4];
-extern uint8_t GATEWAY_ADDRESS[4];
-
 uint16_t volt = 0;
 
 uint8_t ip_addr1 = 10;
 uint8_t ip_addr2 = 5;
 uint8_t ip_addr3 = 40;
 uint8_t ip_addr4 = 83;
-
 /*
 uint8_t ip_addr1 = 192;
 uint8_t ip_addr2 = 168;
@@ -159,16 +135,106 @@ uint8_t ip_addr2 = 0;
 uint8_t ip_addr3 = 0;
 uint8_t ip_addr4 = 22;
 */
-
 char *ptr;
-
 char uid[50];
-
 char str_ip[22];
-
 char str_Mrelays[22];
-
 uint32_t gidx01 = 0;
+
+struct __FILE
+{
+  int dummy;
+};
+
+FILE __stdout;
+
+#ifdef __GNUC__
+  /* With GCC/RAISONANCE, small printf (option LD Linker->Libraries->Small printf
+     set to 'Yes') calls __io_putchar() */
+  #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#else
+  #define PUTCHAR_PROTOTYPE int fputc(int ch, FILE *f)
+#endif /* __GNUC__ */
+
+PUTCHAR_PROTOTYPE
+{
+  /* Place your implementation of fputc here */
+  /* e.g. write a character to the USART */
+  HAL_UART_Transmit(&huart1, (uint8_t*) &ch, 1, 0x0fff);
+  /* Loop until the end of transmission */
+  //while (USART_GetFlagStatus(Port_USART, USART_FLAG_TC) == RESET)
+  //{}
+
+  return ch;
+}
+
+void MX_USART1_UART_Init(void)
+{
+
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 19200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  HAL_UART_Init(&huart1);
+}
+
+int  writeSector(uint32_t Address,void * values, uint16_t size)
+{              
+    uint16_t *AddressPtr;
+    uint16_t *valuePtr;
+    AddressPtr = (uint16_t *)Address;
+    valuePtr=(uint16_t *)values;
+    size = size / 2;  // incoming value is expressed in bytes, not 16 bit words
+    while(size) {        
+        // unlock the flash 
+        // Key 1 : 0x45670123
+        // Key 2 : 0xCDEF89AB
+        FLASH->KEYR = 0x45670123;
+        FLASH->KEYR = 0xCDEF89AB;
+        FLASH->CR &= ~(1 << 1); // ensure PER is low
+        FLASH->CR |= (1 << 0);  // set the PG bit        
+        *(AddressPtr) = *(valuePtr);
+        while(FLASH->SR & (1 << 0)); // wait while busy
+        if (FLASH->SR & (1<<2))
+            return -1; // flash not erased to begin with
+        if (FLASH->SR & (1<<4))
+            return -2; // write protect error
+        AddressPtr++;
+        valuePtr++;
+        size--;
+    }    
+    return 0;    
+}
+void eraseSector(uint32_t SectorStartAddress)
+{
+    FLASH->KEYR = 0x45670123;
+    FLASH->KEYR = 0xCDEF89AB;
+    FLASH->CR &= ~(1<<0);  // Ensure PG bit is low
+    FLASH->CR |= (1<<1); // set the PER bit
+    FLASH->AR = SectorStartAddress;
+    FLASH->CR |= (1<<6); // set the start bit 
+    while(FLASH->SR & (1<<0)); // wait while busy
+}
+void readSector(uint32_t SectorStartAddress, void * values, uint16_t size)
+{
+    uint16_t *AddressPtr;
+    uint16_t *valuePtr;
+    AddressPtr = (uint16_t *)SectorStartAddress;
+    valuePtr=(uint16_t *)values;
+    size = size/2; // incoming value is expressed in bytes, not 16 bit words
+    while(size)
+    {
+        *((uint16_t *)valuePtr)=*((uint16_t *)AddressPtr);
+        valuePtr++;
+        AddressPtr++;
+        size--;
+    }
+}
+
 
 /* USER CODE END 0 */
 
@@ -215,6 +281,8 @@ int main(void)
 	
 	HAL_ADC_Start(&hadc1);
 	
+	MX_USART1_UART_Init();
+	
 	/*##-1- Check if the system has resumed from WWDG reset ####################*/
   if(__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != RESET)
   { 
@@ -238,17 +306,7 @@ int main(void)
   IwdgHandle.Init.Reload = 0x0AAA;
   //IwdgHandle.Init.Counter   = 127;
 	
-	IP_ADDRESS[0] = ip_addr1;
-  IP_ADDRESS[1] = ip_addr2;
-  IP_ADDRESS[2] = ip_addr3;
-  IP_ADDRESS[3] = ip_addr4;
-	
-	GATEWAY_ADDRESS[0] = ip_addr1;
-	GATEWAY_ADDRESS[1] = ip_addr2;
-	GATEWAY_ADDRESS[2] = ip_addr3;
-	GATEWAY_ADDRESS[3] = (ip_addr4 - 2);
-	
-	readSector(0x8012000, (void *)flash, 30);
+	//readSector(0x8012000, (void *)flash, 30);
 	flash[19] = 0;
 	
 	strcat(str_ip, (char *)&flash[4]);
@@ -266,132 +324,12 @@ int main(void)
 	//ip_addr3 = (uint8_t)atoi((char *)&flash[12]);
 	
 	flash[19] = 0;
-	ip_addr4 = (uint8_t)strtol((char *)&flash[16], &ptr, 10);
-	//ip_addr4 = (uint8_t)atoi((char *)&flash[17]);
-	
-	if((ip_addr1 > 0) && (ip_addr2 > 0) && (ip_addr3 > 0) && (ip_addr4 > 0))
-	{
-		IP_ADDRESS[0] = ip_addr1;
-		IP_ADDRESS[1] = ip_addr2;
-		IP_ADDRESS[2] = ip_addr3;
-		IP_ADDRESS[3] = ip_addr4;
-		
-		GATEWAY_ADDRESS[0] = ip_addr1;
-		GATEWAY_ADDRESS[1] = ip_addr2;
-		GATEWAY_ADDRESS[2] = ip_addr3;
-		GATEWAY_ADDRESS[3] = (ip_addr4 - 2);
-		
-		for(gidx01=0;gidx01<8;gidx01++)
-		{
-			//flash[20+gidx01] = 0; //Mrelays[gidx01];
-			Mrelays[gidx01] = flash[20+gidx01];
-		}
-	}
-	else
-	{
-		sprintf(str_ip, "%d,%d,%d,%d", IP_ADDRESS[0], IP_ADDRESS[1], IP_ADDRESS[2], IP_ADDRESS[3]);
-		
-		for(gidx01=0;gidx01<8;gidx01++)
-		{
-			flash[20+gidx01] = 0; //Mrelays[gidx01];
-		}
-		
-		for(gidx01=0;gidx01<8;gidx01++)
-		{
-			Mrelays[gidx01] = flash[20+gidx01];
-		}
-		
-		strncpy((char *)flash, "dip:010.005.040.083", 19);
-		
-		eraseSector(0x8012000);
-		HAL_Delay(100);
-		writeSector(0x8012000, flash, 30); //++
-		HAL_Delay(200);
-
-	}
-	
-	sprintf(str_Mrelays, "%d-%d-%d-%d-%d-%d-%d-%d", Mrelays[0], Mrelays[1], Mrelays[2], Mrelays[3], Mrelays[4], Mrelays[5], Mrelays[6], Mrelays[7]);
-	
-	SwitchStates = ((Mrelays[0] * 1) + (Mrelays[1] * 2) + (Mrelays[2] * 4) + (Mrelays[3] * 8) + (Mrelays[4] * 16) + (Mrelays[5] * 32));
-	
-	HAL_Delay(200);
-	HAL_Delay(200);
-	HAL_Delay(200);
-	HAL_Delay(200);
-	HAL_Delay(200);
-	
-  MX_LWIP_Init();
-  /* USER CODE BEGIN 2 */
-	
-	HAL_Delay(200);
-	HAL_Delay(200);
-	HAL_Delay(200);
-	HAL_Delay(200);
-	HAL_Delay(200);
-	
-//	httpd_init();
-	
-//	SetCGIHandlers(CGI_Handlers, 1);
-	
-//	ds18b20_init_seq();
-//	ds18b20_send_rom_cmd(SKIP_ROM_CMD_BYTE);
-//	ds18b20_send_function_cmd(CONVERT_T_CMD);
 	
 	if(HAL_IWDG_Init(&IwdgHandle) != HAL_OK)
   {
     /* Initialization Error */
     Error_Handler();
   }
-	
-	//(encrypt[1] != 0x05A)
-	//FF37-5DD-524D-3938-6156-4323
-	//FF37-5D3-524D-3938-5532-4324
-	//FF37-5D3-524D-3938-5857-4323
-	//FF37-5D3-524D-3938-5433-4324
-	//FF37-5D3-524D-3938-5932-4324
-	//FF37-5D3-524D-3938-5232-4324
-	//FF37-5D3-524D-3938-5432-4324
-	//FF37-5D3-524D-3938-5357-4323
-	//if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D3) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938) || (encrypt[4] != 0x5357) || (encrypt[5] != 0x4323))
-	//FF37-5D7-524D-3938-4528-4324
-	//FF37-5D6-524D-3938-5628-4324
-	//FF37-5D6-524D-3938-4628-4324
-	//FF37-5D7-524D-3938-4232-4324
-	//FF37-5DA-524D-3938-3057-4324
-	//FF37-5D5-524D-3938-4828-4324
-	//FF37-5DB-524D-3938-5428-4324
-	//FF37-5D5-524D-3938-5028-4324
-	//FF37-5D4-524D-3938-4928-4324
-	//FF37-5D8-524D-3938-5528-4324
-	
-	//FF37-5D5-524D-3938-3630-4323
-	//FF37-5D5-524D-3938-3332-4324
-	//FF37-5D7-524D-3938-5529-4324
-	//FF37-5DE-524D-3938-5129-4324
-	//FF37-5D2-524D-3938-3132-4324
-	//FF37-5D3-524D-3938-5232-4324
-	//FF37-5D5-524D-3938-2932-4324
-	//FF37-5D9-524D-3938-3532-4324
-	//FF37-5DD-524D-3938-6156-4323
-	//FF37-5D3-524D-3938-2832-4324
-	//FF37-5D3-524D-3938-5433-4324
-	//FF37-5D4-524D-3938-5128-4324
-	//FF37-5D5-524D-3938-5429-4324
-	//FF37-5D7-524D-3938-5029-4324
-	//FF37-5D3-524D-3938-3431-4324
-	//FF37-5D6-524D-3938-3032-4324
-	//FF37-5D9-524D-3938-5328-4324
-	//FF37-5D7-524D-3938-4428-4324
-	//FF37-5D8-524D-3938-5633-4324
-	//FF37-5D9-524D-3938-2831-4324
-	//FF37-5D3-524D-3938-2732-4324
-	//FF37-5D5-524D-3938-3031-4324
-	//FF37-5D8-524D-3938-3331-4324
-	//FF37-5D8-524D-3938-4829-4324
-	//FF37-5D8-524D-3938-4929-4324
-	//FF37-5D4-524D-3938-3432-4324
-	//FF37-5D6-524D-3938-5228-4324
-	//FF37-5D4-524D-3938-3231-4324
 
 /*
 	if((encrypt[0] != 0xFF37) || (encrypt[1] != 0x05D4) || (encrypt[2] != 0x524D) || (encrypt[3] != 0x3938) || (encrypt[4] != 0x3231) || (encrypt[5] != 0x4324))
@@ -405,7 +343,7 @@ int main(void)
 	
 	
 	
-	sprintf(uid, "%X-%X-%X-%X-%X-%X", encrypt[0], encrypt[1], encrypt[2], encrypt[3], encrypt[4], encrypt[5]);
+	//sprintf(uid, "%X-%X-%X-%X-%X-%X", encrypt[0], encrypt[1], encrypt[2], encrypt[3], encrypt[4], encrypt[5]);
 	
 
   /* USER CODE END 2 */
@@ -418,12 +356,6 @@ int main(void)
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-		//HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_6);
-		//HAL_Delay(200);
-		//HAL_Delay(200);
-		//HAL_Delay(200);
-		//HAL_Delay(200);
-//		MX_LWIP_Process();
 		
 		if(flag_systick03)
 		{
@@ -454,7 +386,7 @@ int main(void)
 				}
 				else
 				{
-					eraseSector(0x8012000);
+					//eraseSector(0x8012000);
 					HAL_Delay(100);
 					while(1)
 					{
@@ -472,85 +404,13 @@ int main(void)
 		if(flag_systick01)
 		{
 			HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
-			flag_systick01 = GPIO_PIN_RESET;
-			//sprintf((char *)idx_html, "HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n10.222.202.59:0,11,%2d,%02d,%03d", SwitchStates, temp, volt); //, uid); //, strCmd01);
-			//sprintf((char *)idx_html, "HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n%s:0,11,%2d,%02d,%03d", str_ip, SwitchStates, temp, volt); //, uid); //, strCmd01);
-			//sprintf((char *)idx_html, "%s:0,11,%d,%d,%d", str_ip, SwitchStates, temp, volt);
-			//sprintf((char *)idx_html, " %s ", uid); //, strCmd01);
-			//file__index_html[0].len = strlen(idx_html);
-			
+			flag_systick01 = GPIO_PIN_RESET;			
 			HAL_IWDG_Refresh(&IwdgHandle);
 		}
 		
 		if(flag_systick02)
 		{
 			flag_systick02 = GPIO_PIN_RESET;
-			
-			//ds18b20_init_seq();
-			//ds18b20_send_rom_cmd(SKIP_ROM_CMD_BYTE);
-			//ds18b20_send_function_cmd(CONVERT_T_CMD);
-			
-			HAL_Delay(1);
-
-			//ds18b20_init_seq();
-			//ds18b20_send_rom_cmd(SKIP_ROM_CMD_BYTE);
-			//ds18b20_send_function_cmd(READ_SCRATCHPAD_CMD);
-			//temp = ds18b20_read_temp();	// returns float value
-			
-			if(Mrelays[0] == 1)
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_SET);
-			}
-			else
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_RESET);
-			}
-			
-			if(Mrelays[1] == 1)
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
-			}
-			else
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
-			}
-			
-			if(Mrelays[2] == 1)
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
-			}
-			else
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);
-			}
-			
-			if(Mrelays[3] == 1)
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
-			}
-			else
-			{
-				HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_RESET);
-			}
-			
-			if(Mrelays[4] == 1)
-			{
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-			}
-			else
-			{
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-			}
-			
-			if(Mrelays[5] == 1)
-			{
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
-			}
-			else
-			{
-				HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
-			}
-			
 		}
 
   }
@@ -588,139 +448,6 @@ void HAL_SYSTICK_Callback(void)
 		systick_counter03 = 0;
 		flag_systick03 = GPIO_PIN_SET;
 	}
-}
-
-const char* LEDS_CGI_Handler(int iIndex, int iNumParams, char *pcParam[], char *pcValue[]) 
-{
-	
-	uint8_t i = 0;
-//	uint32_t iLen = 0;
-	
-	if (iIndex == 0) 
-	{
-		if(strstr(pcParam[i], "command"))
-			{
-				if(strstr(pcValue[i], "a0"))
-				{
-					Mrelays[0] = 0;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_RESET);
-				}
-				else if(strstr(pcValue[i], "a1"))
-				{
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, GPIO_PIN_SET);
-					Mrelays[0] = 1;
-				}
-				else if(strstr(pcValue[i], "b0"))
-				{
-					Mrelays[1] = 0;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
-				}
-				else if(strstr(pcValue[i], "b1"))
-				{
-					Mrelays[1] = 1;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
-				}
-				else if(strstr(pcValue[i], "c0"))
-				{
-					Mrelays[2] = 0;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_RESET);
-				}
-				else if(strstr(pcValue[i], "c1"))
-				{
-					Mrelays[2] = 1;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, GPIO_PIN_SET);
-				}
-				else if(strstr(pcValue[i], "d0"))
-				{
-					Mrelays[3] = 0;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_RESET);
-				}
-				else if(strstr(pcValue[i], "d1"))
-				{
-					Mrelays[3] = 1;
-					HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, GPIO_PIN_SET);
-				}
-				else if(strstr(pcValue[i], "e0"))
-				{
-					Mrelays[4] = 0;
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-				}
-				else if(strstr(pcValue[i], "e1"))
-				{
-					Mrelays[4] = 1;
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-				}
-				else if(strstr(pcValue[i], "f0"))
-				{
-					Mrelays[5] = 0;
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_RESET);
-				}
-				else if(strstr(pcValue[i], "f1"))
-				{
-					Mrelays[5] = 1;
-					HAL_GPIO_WritePin(GPIOA, GPIO_PIN_6, GPIO_PIN_SET);
-				}				
-				else if(strstr(pcValue[i], "dip"))
-				{
-					//Mrelays[4] = 1;
-					//HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_SET);
-					//memcpy(flash, pcValue[i], 20); //++
-					//memcpy(&flash[20], Mrelays, 8); //++
-					
-					for(gidx01 = 0; gidx01 < 20; gidx01++)
-					{
-						flash[gidx01] = pcValue[i][gidx01];
-					}
-					
-					for(gidx01 = 0; gidx01 < 8; gidx01++)
-					{
-						flash[20 + gidx01] = Mrelays[gidx01];
-					}
-					
-					eraseSector(0x8012000);
-					HAL_Delay(200);
-					HAL_Delay(200);
-					//writeSector(0x8012000, pcValue[i], 21); //--
-					writeSector(0x8012000, flash, 30); //++
-					HAL_Delay(200);
-					HAL_Delay(200);
-					while(1){;}
-				}
-				else if(strstr(pcValue[i], "uid"))
-				{
-					sprintf(uid, "%X-%X-%X-%X-%X-%X", encrypt[0], encrypt[1], encrypt[2], encrypt[3], encrypt[4], encrypt[5]);
-				}
-				
-				sprintf(strCmd01, "%s %s", pcParam[i], pcValue[i]);
-			}
-	}
-	
-	SwitchStates = ((Mrelays[0] * 1) + (Mrelays[1] * 2) + (Mrelays[2] * 4) + (Mrelays[3] * 8) + (Mrelays[4] * 16) + (Mrelays[5] * 32));
-	
-	/****************************************************************************************************************/
-	//memcpy(flash, pcValue[i], 20); //++
-	//memcpy(&flash[20], Mrelays, 8); //++
-	
-	for(gidx01 = 0; gidx01 < 8; gidx01++)
-	{
-		flash[20+gidx01] = Mrelays[gidx01];
-	}
-	
-	eraseSector(0x8012000);
-	HAL_Delay(100);
-	//writeSector(0x8012000, pcValue[i], 21); //--
-	writeSector(0x8012000, flash, 30); //++
-	HAL_Delay(200);
-	
-	/****************************************************************************************************************/
-	
-	//sprintf((char *)idx_html, "HTTP/1.0 200 OK\r\nContent-type: text/html\r\n\r\n%s:0,11,%2d,%02d,%03d", str_ip, SwitchStates, temp, volt); //, uid); //, strCmd01);
-	sprintf((char *)idx_html, "%s:0,11,%d,%d,%d", str_ip, SwitchStates, temp, volt);
-	//sprintf((char *)idx_html, " %s ", uid);
-	
-	flag_systick01 = GPIO_PIN_SET;
-	
-	return "/index.html";
 }
 
 /**
